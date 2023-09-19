@@ -1,5 +1,5 @@
 (executable
- (public_name sla)
+ (public_name orth)
  (libraries core))
 
 (env
