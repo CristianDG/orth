@@ -1,0 +1,7 @@
+(executable
+ (public_name sla)
+ (libraries core))
+
+(env
+  (dev
+    (flags (:standard -w -34 -w -37))))
