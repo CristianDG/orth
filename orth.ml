@@ -1,4 +1,4 @@
-open Base
+open Core
 
 type token =
   | Add
@@ -78,11 +78,10 @@ let asm_of_token (token : token) : string =
   in
   List.map ~f:(fun s -> s ^ "\n") instructions |> String.concat
 
-let output_asm_to_file tokens output_file_path =
+let output_asm_to_channel tokens ch =
   let open Stdio.Out_channel in
-  let ch = create output_file_path in
   (* inicialização *)
-  Core.printf "Inicializando\n";
+  printf "Inicializando\n";
   List.iter ~f:(output_string ch)
     [
       ".intel_syntax noprefix\n";
@@ -118,7 +117,26 @@ let output_asm_to_file tokens output_file_path =
 
   close ch
 
-(*
-let tokens = tokens_of_file "./examples/add.orth"
-let () = output_asm_to_file tokens "./tmp/teste.s"
- *)
+let () =
+  let usage = "orth -o <output> -i <input>" in
+  let input_file = ref "" in
+  let output_file = ref "" in
+  let speclist =
+    [
+      ("-o", Arg.Set_string output_file, "Destinação do executável");
+      ("-i", Arg.Set_string input_file, "Destinação do executável");
+    ]
+  in
+  let anon_fun _ = () in
+  let () = Arg.parse speclist anon_fun usage in
+  let () = print_endline !input_file in
+  let () = print_endline !output_file in
+  if equal_string !input_file "" || equal_string !output_file "" then
+    print_endline "Erro :+1:"
+  else
+    let tokens = tokens_of_file !input_file in
+    let (nome, ch) = Stdlib.Filename.open_temp_file "" "" in
+    (* TODO: spawnar gcc *)
+    output_asm_to_channel tokens ch
+
+(* *)
