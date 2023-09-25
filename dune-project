@@ -1,7 +1,7 @@
 (lang dune 3.10)
 
-(name sla)
+(name orth)
 
 (package
-  (depends core)
-  (name sla))
+  (depends core core_unix)
+  (name orth))

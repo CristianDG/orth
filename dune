@@ -1,8 +1,8 @@
 (executable
  (public_name orth)
- (libraries core))
+ (libraries core core_unix))
 
 (env
   (dev
-    (flags (:standard -w -32 -w -34 -w -37))))
+    (flags (:standard -w -32 -w -34 -w -37 -w -26))))
 
