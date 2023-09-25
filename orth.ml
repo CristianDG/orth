@@ -81,6 +81,30 @@ let asm_of_token (token : token) : string =
   in
   List.map ~f:(fun s -> s ^ "\n") instructions |> String.concat
 
+let bytes_of_token (token : token) : bytes =
+  let open Stdlib in
+  let buf = Buffer.create 0 in
+  let () =
+    match token with
+    | Number n ->
+        (* mov eax, n *)
+        Buffer.add_uint8 buf 0x48;
+        Buffer.add_uint8 buf 0xb8;
+        Buffer.add_int64_le buf (Int64.of_int n);
+        (* push eax *)
+        Buffer.add_uint8 buf (0x50 + 0)
+    | Add ->
+        Buffer.add_uint8 buf 0x58;
+        Buffer.add_uint8 buf (0x58 + 3);
+
+        Buffer.add_uint8 buf 0x48;
+        Buffer.add_uint8 buf 0x03;
+        Buffer.add_uint8 buf (0b11000000 + 0b000000 + 0b011);
+        Buffer.add_uint8 buf (0x50 + 0)
+    | _ -> assert false
+  in
+  Buffer.to_bytes buf
+
 let to_bytes_as_is x = List.map ~f:Char.of_int_exn x |> Bytes.of_char_list
 let to_bytes_as_le x = List.rev x |> to_bytes_as_is
 
@@ -124,22 +148,19 @@ let output_elf_to_channel _tokens ch =
   in
 
   let program =
-    []
-    @ [ 0x48; 0xb8 + 0; 34; 0; 0; 0; 0; 0; 0; 0 ] (* mov rax, 35 *)
-    @ [ 0x48; 0x50 + 0 ] (* push rax *)
-    (* -- *)
-    @ [ 0x48; 0xb8 + 0; 35; 0; 0; 0; 0; 0; 0; 0 ] (* mov rax, 34 *)
-    @ [ 0x48; 0x50 + 0 ] (* push rax *)
-    (* -- *)
-    @ [ 0x48; 0x58 + 0 ] (* pop rax *)
-    @ [ 0x48; 0x58 + 3 ] (* pop rbx *)
-    @ [ 0x48; 0x03; List.fold ~f:Int.bit_or ~init:0 [0b11000000; 0b011000; 0b000;] ] (* add rbx, rax *)
-    (* saindo *)
-    @ [ 0x48; 0x89; List.fold ~f:Int.bit_or ~init:0 [0b11000000; 0b011000; 0b000;] ] (* mov rbx, rax *)
-    @ [ 0xb8; 0x01; 0; 0; 0 ] (* mov eax, 1 *)
-    @ [ 0xcd; 0x80 ]
+    [
+      bytes_of_token (Number 35);
+      bytes_of_token (Number 34);
+      bytes_of_token Add;
+      (* saindo *)
+      to_bytes_as_is
+        ([ 0x58 + 3 ] (* pop rbx *)
+        @ [ 0xb8; 0x01; 0; 0; 0 ] (* mov eax, 1 (exit) *)
+        @ [ 0xcd; 0x80 ]);
+    ]
     (* syscall *)
   in
+  let program_size = List.fold ~f:(fun acc x -> acc + Bytes.length x) ~init:0 program in
 
   let p_type = to_bytes_as_le [ 0; 0; 0; 1 ] in
   let p_flags = to_bytes_as_le [ 0; 0; 0; 5 ] in
@@ -149,13 +170,13 @@ let output_elf_to_channel _tokens ch =
   let p_paddr = to_bytes_as_le [ 0; 0; 0; 0; 0; 0; 0; 0 ] in
   let p_filesz =
     let buf = Stdlib.Buffer.create 0 in
-    Stdlib.Buffer.add_int64_le buf (Int64.of_int (List.length program));
+    Stdlib.Buffer.add_int64_le buf (Int64.of_int program_size);
     Stdlib.Buffer.to_bytes buf
   in
   (* encontrar o tamanho do código *)
   let p_memsz =
     let buf = Stdlib.Buffer.create 0 in
-    Stdlib.Buffer.add_int64_le buf (Int64.of_int (List.length program));
+    Stdlib.Buffer.add_int64_le buf (Int64.of_int program_size);
     Stdlib.Buffer.to_bytes buf
   in
   let p_align = to_bytes_as_le [ 0; 0; 0; 0; 0; 0; 0x10; 0x00 ] in
@@ -166,23 +187,8 @@ let output_elf_to_channel _tokens ch =
   (* Printando o header *)
   List.iter ~f:(output_bytes ch) elf64_ehdr;
   List.iter ~f:(output_bytes ch) elf64_phdr;
-
-  output_bytes ch (to_bytes_as_is program)
-
-let bytes_of_token (token : token) : bytes =
-  let open Stdlib in
-  let buf = Buffer.create 0 in
-  let () =
-    match token with
-    | Number n ->
-        (* mov eax, n *)
-        Buffer.add_uint8 buf 0xb8;
-        Buffer.add_int64_le buf (Int64.of_int n);
-        (* push eax *)
-        Buffer.add_uint8 buf (0x50 + 0)
-    | _ -> assert false
-  in
-  Buffer.to_bytes buf
+  List.iter ~f:(output_bytes ch) program;
+;;
 
 let output_asm_to_channel tokens ch =
   let open Stdio.Out_channel in
