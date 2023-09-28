@@ -164,7 +164,7 @@ let bytes_of_token (token : token) : bytes =
         (* jle ... *)
         Buffer.add_uint8 buf 0x7e;
         Buffer.add_uint8 buf 0x00
-    | Else -> 
+    | Else ->
         Buffer.add_uint8 buf 0xeb;
         Buffer.add_uint8 buf 0x00
     | Fi -> ()
@@ -205,8 +205,8 @@ let output_elf_to_channel _tokens ch =
       let set buf idx byte =
         let new_buf = Buffer.create 0 in
         let new_buf_bytes = Buffer.to_bytes !buf in
-        let () = Bytes.set new_buf_bytes idx (Char.of_int_exn (byte - 1)) in
-        let () = Buffer.add_bytes new_buf new_buf_bytes in
+        Bytes.set new_buf_bytes idx (Char.of_int_exn (byte - 1));
+        Buffer.add_bytes new_buf new_buf_bytes;
         new_buf
       in
       match token with
@@ -224,7 +224,7 @@ let output_elf_to_channel _tokens ch =
           let prev_length = Stack.pop_exn if_stack in
           let delta = length - prev_length in
           printf "FI %d\n" delta;
-          buf := set buf prev_length delta;
+          buf := set buf prev_length delta
       | _ -> ()
     in
 
@@ -237,7 +237,6 @@ let output_elf_to_channel _tokens ch =
     add_bytes_of_token buf (Number 35);
     add_bytes_of_token buf Fi;
     add_bytes_of_token buf Add;
-
 
     (* saindo *)
     Buffer.add_bytes !buf
@@ -319,15 +318,15 @@ let output_elf_to_channel _tokens ch =
   in
   let p_paddr = to_bytes_as_le [ 0; 0; 0; 0; 0; 0; 0; 0 ] in
   let p_filesz =
-    let buf = Stdlib.Buffer.create 0 in
-    Stdlib.Buffer.add_int64_le buf (Int64.of_int program_size);
-    Stdlib.Buffer.to_bytes buf
+    let buf = Buffer.create 0 in
+    Buffer.add_int64_le buf (Int64.of_int program_size);
+    Buffer.to_bytes buf
   in
   (* encontrar o tamanho do código *)
   let p_memsz =
-    let buf = Stdlib.Buffer.create 0 in
-    Stdlib.Buffer.add_int64_le buf (Int64.of_int program_size);
-    Stdlib.Buffer.to_bytes buf
+    let buf = Buffer.create 0 in
+    Buffer.add_int64_le buf (Int64.of_int program_size);
+    Buffer.to_bytes buf
   in
   let p_align = to_bytes_as_le [ 0; 0; 0; 0; 0; 0; 0x10; 0x00 ] in
   let elf64_phdr =
