@@ -12,6 +12,8 @@ type token =
   | If
   | Else
   | Fi
+  | While
+  | Done
   | Number of int
   | Id of string
 
@@ -168,6 +170,25 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_uint8 buf 0xeb;
         Buffer.add_uint8 buf 0x00
     | Fi -> ()
+    | While ->
+        (* pop eax *)
+        Buffer.add_uint8 buf 0x58;
+
+        (* cmp eax, 0 *)
+        Buffer.add_uint8 buf 0x48;
+        Buffer.add_uint8 buf 0x83;
+        Buffer.add_uint8 buf 0b11_111_000;
+        Buffer.add_uint8 buf 0x00;
+
+        (* push eax *)
+        Buffer.add_uint8 buf (0x50 + 0);
+
+        (* jle ... *)
+        Buffer.add_uint8 buf 0x7e;
+        Buffer.add_uint8 buf 0x00
+    | Done ->
+        Buffer.add_uint8 buf 0xeb;
+        Buffer.add_uint8 buf 0x00
     | _ -> assert false
   in
   Buffer.to_bytes buf
@@ -189,15 +210,19 @@ let output_elf_to_channel _tokens ch =
     42 putn
   fi
 
-  [
-    if 0x69
-    else 0x74
-    fi 0x77
-  ]
+  1 while
+    swap
+    copy
+    putn
+  done
+
    *)
-  (* TODO: criar o map de nome_fn -> addr *)
+  (* TODO: se der tempo mudar os pulos de 8 para 32 bits *)
+  let entry_offset = 0x78 + Bytes.length print_int_proc in
+  let entry_addr = 0x08048000 |. entry_offset in
   let program_buf =
     let if_stack : int Base.Stack.t = Stack.create () in
+    let while_stack : int Base.Stack.t = Stack.create () in
     let buf = ref (Buffer.create 0) in
     let add_bytes_of_token buf token =
       Buffer.add_bytes !buf (bytes_of_token token);
@@ -205,11 +230,19 @@ let output_elf_to_channel _tokens ch =
       let set buf idx byte =
         let new_buf = Buffer.create 0 in
         let new_buf_bytes = Buffer.to_bytes !buf in
-        Bytes.set new_buf_bytes idx (Char.of_int_exn (byte - 1));
+        printf "%d\n" byte;
+        Bytes.set new_buf_bytes idx (Char.of_int_exn byte);
         Buffer.add_bytes new_buf new_buf_bytes;
         new_buf
       in
       match token with
+      | While -> Stack.push while_stack (length - 1)
+      | Done ->
+          let prev_length = Stack.pop_exn while_stack in
+          let delta = length - prev_length in
+          buf := set buf prev_length delta;
+          buf := set buf (length - 1) (0xff - delta);
+          printf "DONE %x\n" (entry_addr + length)
       | If -> Stack.push if_stack (length - 1)
       | Else ->
           (* TODO: pegar o último item do if_stack, subtrair com Buffer.length buf e adicionar o valor para conseguir fzr o jnz,
@@ -217,7 +250,7 @@ let output_elf_to_channel _tokens ch =
           let prev_length = Stack.pop_exn if_stack in
           let delta = length - prev_length in
           buf := set buf prev_length delta;
-          printf "ELSE %d\n" delta;
+          printf "ELSE %x\n" delta;
           Stack.push if_stack (length - 1)
       | Fi ->
           (* TODO: pegar o último item do if_stack, subtrair com Buffer.length buf e adicionar o valor para conseguir fzr o jump *)
@@ -230,13 +263,9 @@ let output_elf_to_channel _tokens ch =
 
     Buffer.add_bytes !buf print_int_proc;
     add_bytes_of_token buf (Number 33);
-    add_bytes_of_token buf (Number 0);
-    add_bytes_of_token buf If;
-    add_bytes_of_token buf (Number 34);
-    add_bytes_of_token buf Else;
-    add_bytes_of_token buf (Number 35);
-    add_bytes_of_token buf Fi;
-    add_bytes_of_token buf Add;
+    add_bytes_of_token buf (Number 1);
+    add_bytes_of_token buf While;
+    add_bytes_of_token buf Done;
 
     (* saindo *)
     Buffer.add_bytes !buf
@@ -248,8 +277,6 @@ let output_elf_to_channel _tokens ch =
   in
   let program = Buffer.to_bytes program_buf (* syscall *) in
   let program_size = Buffer.length program_buf in
-  let entry_offset = 0x78 + Bytes.length print_int_proc in
-  let entry_addr = 0x08048000 |. entry_offset in
   (* elf64_ehdr *)
   let e_ident =
     to_bytes_as_is
