@@ -163,11 +163,21 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_uint8 buf 0b11_111_000;
         Buffer.add_uint8 buf 0x00;
 
-        (* jle ... *)
-        Buffer.add_uint8 buf 0x7e;
+        (* jge ... *)
+        Buffer.add_uint8 buf 0x7d;
+        Buffer.add_uint8 buf 0x04;
+
+        (* jump ... *)
+        Buffer.add_uint8 buf 0xeb;
+        Buffer.add_uint8 buf 0x00;
+        Buffer.add_uint8 buf 0x00;
+        Buffer.add_uint8 buf 0x00;
         Buffer.add_uint8 buf 0x00
     | Else ->
         Buffer.add_uint8 buf 0xeb;
+        Buffer.add_uint8 buf 0x00;
+        Buffer.add_uint8 buf 0x00;
+        Buffer.add_uint8 buf 0x00;
         Buffer.add_uint8 buf 0x00
     | Fi -> ()
     | While ->
@@ -189,6 +199,47 @@ let bytes_of_token (token : token) : bytes =
     | Done ->
         Buffer.add_uint8 buf 0xeb;
         Buffer.add_uint8 buf 0x00
+    | PrintChar ->
+        (* mov    rax, 1 *)
+        Buffer.add_string buf "\x48\xc7\xc0\x01\x00\x00\x00";
+        (* mov    edi, 1 *)
+        Buffer.add_string buf "\x48\xc7\xc7\x01\x00\x00\x00";
+        (* mov    rsi,rsp *)
+        Buffer.add_string buf "\x48\x89\xe6";
+        (* mov    rdx, 1 *)
+        Buffer.add_string buf "\x48\xc7\xc2\x01\x00\x00\x00";
+        (* syscall *)
+        Buffer.add_string buf "\x0f\x05";
+        Buffer.add_uint8 buf 0x58
+    | PrintNumber ->
+        (* mov    r8, 0 *)
+        Buffer.add_string buf "\x49\xc7\xc0\x01\x00\x00\x00";
+        (* pop    rcx *)
+        Buffer.add_string buf "\x59";
+
+        Buffer.add_string buf "\x6a";
+        Buffer.add_string buf "\n";
+        (* loop: *)
+        Buffer.add_string buf "\x49\xff\xc0";
+        Buffer.add_string buf "\x48\xc7\xc2\x00\x00\x00\x00";
+        Buffer.add_string buf "\x48\x89\xc8";
+        Buffer.add_string buf "\x48\xc7\xc3\x0a\x00\x00\x00";
+        Buffer.add_string buf "\x48\xf7\xf3";
+        Buffer.add_string buf "\x48\x89\xc1";
+        Buffer.add_string buf "\x48\x83\xc2\x30";
+        Buffer.add_string buf "\x52";
+        Buffer.add_string buf "\x48\x83\xf9\x00";
+        Buffer.add_string buf "\x75\xdb";
+
+        (* jne loop *)
+        Buffer.add_string buf "\x48\xc7\xc0\x01\x00\x00\x00";
+        Buffer.add_string buf "\x48\xc7\xc7\x01\x00\x00\x00";
+        Buffer.add_string buf "\x48\x89\xe6";
+        Buffer.add_string buf "\x48\xc7\xc2\x01\x00\x00\x00";
+        Buffer.add_string buf "\x0f\x05";
+        Buffer.add_string buf "\x58";
+        Buffer.add_string buf "\x49\xff\xc8";
+        Buffer.add_string buf "\x75\xe0"
     | _ -> assert false
   in
   Buffer.to_bytes buf
@@ -197,10 +248,6 @@ let output_elf_to_channel _tokens ch =
   let open Stdio.Out_channel in
   let module Buffer = Stdlib.Buffer in
   (* TODO: função que printa inteiros *)
-  let print_int_proc =
-    let buf = Buffer.create 20 in
-    Buffer.to_bytes buf
-  in
 
   (*
 
@@ -217,9 +264,6 @@ let output_elf_to_channel _tokens ch =
   done
 
    *)
-  (* TODO: se der tempo mudar os pulos de 8 para 32 bits *)
-  let entry_offset = 0x78 + Bytes.length print_int_proc in
-  let entry_addr = 0x08048000 |. entry_offset in
   let program_buf =
     let if_stack : int Base.Stack.t = Stack.create () in
     let while_stack : int Base.Stack.t = Stack.create () in
@@ -230,7 +274,6 @@ let output_elf_to_channel _tokens ch =
       let set buf idx byte =
         let new_buf = Buffer.create 0 in
         let new_buf_bytes = Buffer.to_bytes !buf in
-        printf "%d\n" byte;
         Bytes.set new_buf_bytes idx (Char.of_int_exn byte);
         Buffer.add_bytes new_buf new_buf_bytes;
         new_buf
@@ -241,31 +284,33 @@ let output_elf_to_channel _tokens ch =
           let prev_length = Stack.pop_exn while_stack in
           let delta = length - prev_length in
           buf := set buf prev_length delta;
-          buf := set buf (length - 1) (0xff - delta);
-          printf "DONE %x\n" (entry_addr + length)
+          buf := set buf (length - 1) (0xff - delta)
       | If -> Stack.push if_stack (length - 1)
       | Else ->
-          (* TODO: pegar o último item do if_stack, subtrair com Buffer.length buf e adicionar o valor para conseguir fzr o jnz,
-              além disso, deixar espaço de um jump antes de tudo *)
+          (* TODO: pegar o último item do if_stack, subtrair com Buffer.length buf e adicionar o valor para conseguir fzr o jnz, além disso, deixar espaço de um jump antes de tudo *)
           let prev_length = Stack.pop_exn if_stack in
+          Stack.push if_stack (length - 1);
           let delta = length - prev_length in
-          buf := set buf prev_length delta;
-          printf "ELSE %x\n" delta;
-          Stack.push if_stack (length - 1)
+          buf := set buf (prev_length - 0) (delta >> 24);
+          buf := set buf (prev_length - 1) ((delta & 0x00ff0000) >> 16);
+          buf := set buf (prev_length - 2) ((delta & 0x0000ff00) >> 8);
+          buf := set buf (prev_length - 3) (delta & 0x000000ff)
       | Fi ->
           (* TODO: pegar o último item do if_stack, subtrair com Buffer.length buf e adicionar o valor para conseguir fzr o jump *)
           let prev_length = Stack.pop_exn if_stack in
           let delta = length - prev_length in
-          printf "FI %d\n" delta;
-          buf := set buf prev_length delta
+          buf := set buf (prev_length - 0) (delta >> 24);
+          buf := set buf (prev_length - 1) ((delta & 0x00ff0000) >> 16);
+          buf := set buf (prev_length - 2) ((delta & 0x0000ff00) >> 8);
+          buf := set buf (prev_length - 3) (delta & 0x000000ff)
       | _ -> ()
     in
 
-    Buffer.add_bytes !buf print_int_proc;
-    add_bytes_of_token buf (Number 33);
-    add_bytes_of_token buf (Number 1);
-    add_bytes_of_token buf While;
-    add_bytes_of_token buf Done;
+    add_bytes_of_token buf (Number 69);
+    add_bytes_of_token buf PrintNumber;
+    add_bytes_of_token buf (Number 420);
+    add_bytes_of_token buf PrintNumber;
+    add_bytes_of_token buf (Number 0);
 
     (* saindo *)
     Buffer.add_bytes !buf
@@ -275,7 +320,9 @@ let output_elf_to_channel _tokens ch =
          @ [ 0xcd; 0x80 ]));
     buf.contents
   in
-  let program = Buffer.to_bytes program_buf (* syscall *) in
+  let entry_offset = 0x78 in
+  let entry_addr = 0x08048000 + entry_offset in
+  let program = Buffer.to_bytes program_buf in
   let program_size = Buffer.length program_buf in
   (* elf64_ehdr *)
   let e_ident =
