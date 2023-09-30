@@ -244,7 +244,7 @@ let bytes_of_token (token : token) : bytes =
   in
   Buffer.to_bytes buf
 
-let output_elf_to_channel _tokens ch =
+let output_elf_to_channel tokens ch =
   let open Stdio.Out_channel in
   let module Buffer = Stdlib.Buffer in
   (* TODO: função que printa inteiros *)
@@ -306,11 +306,7 @@ let output_elf_to_channel _tokens ch =
       | _ -> ()
     in
 
-    add_bytes_of_token buf (Number 69);
-    add_bytes_of_token buf PrintNumber;
-    add_bytes_of_token buf (Number 420);
-    add_bytes_of_token buf PrintNumber;
-    add_bytes_of_token buf (Number 0);
+    List.iter ~f:(add_bytes_of_token buf) tokens;
 
     (* saindo *)
     Buffer.add_bytes !buf
