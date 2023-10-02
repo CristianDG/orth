@@ -1,4 +1,8 @@
-34 35 +
-putn
-10 putc
+34 35 + putn
+' ' putc
+'n' putc
+'i' putc
+'c' putc
+'e' putc
+'\n' putc
 0

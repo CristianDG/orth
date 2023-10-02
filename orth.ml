@@ -39,6 +39,7 @@ let rec lex (source : string) : token list =
               (Some Sub, rest)
           | n when equal_char '-' n || Char.is_digit n -> parse_int n rest
           | c when Char.is_whitespace c -> (None, rest)
+          | c when equal_char '\'' c -> parse_char rest
           | c -> parse_word (c :: rest)
         in
 
@@ -49,6 +50,17 @@ let rec lex (source : string) : token list =
           (snd res)
   in
   loop chars
+
+and parse_char rest =
+  let consumed, rest = List.split_while ~f:(fun c -> not (equal_char c '\'')) rest in
+  let chr = if List.length consumed > 1 then 
+    match consumed with
+    | [ '\\'; 'n' ] -> '\n'
+    | [ '\\'; '\'' ] -> '\''
+    | [ '\\'; '\\' ] -> '\\'
+    | _ -> '?'
+  else List.hd_exn consumed in
+  (Some (Number (Char.to_int chr)), List.tl_exn rest)
 
 and parse_int n rest =
   let s = String.of_char n in
@@ -233,23 +245,6 @@ let bytes_of_token (token : token) : bytes =
 let output_elf_to_channel tokens ch =
   let open Stdio.Out_channel in
   let module Buffer = Stdlib.Buffer in
-  (* TODO: função que printa inteiros *)
-
-  (*
-
-  10 0 = if
-    69 putn
-  else
-    42 putn
-  fi
-
-  1 while
-    swap
-    copy
-    putn
-  done
-
-   *)
   let program_buf =
     let if_stack : int Base.Stack.t = Stack.create () in
     let while_stack : int Base.Stack.t = Stack.create () in
@@ -293,7 +288,7 @@ let output_elf_to_channel tokens ch =
     in
 
     List.iter ~f:(add_bytes_of_token buf) tokens;
-(*
+    (*
     movq $0x3C, %rax
     movq $0x00, %rbx
     syscall
