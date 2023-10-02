@@ -1,0 +1,9 @@
+97        # stack: 'a'
+101       # stack: 'a' 'e'
+dup2      # stack: 'a' 'e' 'a' 'e'
+swap      # stack: 'a' 'e' 'e' 'a'
+putc putc # imprime "ae"; stack: 'a' 'e'
+32 putc   # imprime ' '
+putc putc # imprime "ea"; stack: vazio
+10 putc   # imprime '\n'
+0         # retorna 0

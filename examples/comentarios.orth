@@ -1,0 +1,10 @@
+# comentários: começam com '#' e terminam na quebra de linha
+# já que preciso escrever alguma coisa nesse arquivo
+# vou escrever as funções que implementei até o dia 30/09/2023
+#
+# dup: duplica o último elemento do stack
+# dup2: duplica os ultimos 2 elementos do stack
+# swap: troca os ultimos 2 elementos do stack de lugar
+# putn: imprime o último elemento do stack como número e remove ele
+# putc: imprime o último elemento do stack como letra e remove ele
+0
