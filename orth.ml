@@ -293,13 +293,17 @@ let output_elf_to_channel tokens ch =
     in
 
     List.iter ~f:(add_bytes_of_token buf) tokens;
-
+(*
+    movq $0x3C, %rax
+    movq $0x00, %rbx
+    syscall
+ *)
     (* saindo *)
     Buffer.add_bytes !buf
       (to_bytes_as_is
-         ([ 0x58 + 3 ] (* pop rbx *)
-         @ [ 0xb8; 0x01; 0; 0; 0 ] (* mov eax, 1 (exit) *)
-         @ [ 0xcd; 0x80 ]));
+         ([ 0x58 + 7 ] (* pop rbx *)
+         @ [ 0xb8; 0x3c; 0; 0; 0 ] (* mov eax, 1 (exit) *)
+         @ [ 0x0f; 0x05 ]));
     buf.contents
   in
   let entry_offset = 0x78 in

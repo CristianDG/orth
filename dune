@@ -4,5 +4,5 @@
 
 (env
   (dev
-    (flags (:standard -w -32 -w -34 -w -37 -w -26))))
+    (flags (:standard -cclib -static -w -32 -w -34 -w -37 -w -26))))
 
