@@ -4,18 +4,19 @@ type token =
   | Add
   | Sub
   | Mul
+  | Eq
   | IntDiv
   | PrintNumber
   | PrintChar
   | Swap
-  | Copy
+  | Dup
+  | Dup2
   | If
   | Else
   | Fi
   | While
   | Done
   | Number of int
-  | Id of string
 
 type program = token list
 
@@ -26,7 +27,8 @@ let rec lex (source : string) : token list =
     | c :: rest ->
         let res =
           match c with
-          | c when Char.is_whitespace c -> (None, rest)
+          | '#' ->
+              (None, List.drop_while ~f:(fun c -> not (equal_char '\n' c)) rest)
           | '+' -> (Some Add, rest)
           | '/' -> (Some IntDiv, rest)
           | '*' -> (Some Mul, rest)
@@ -35,10 +37,8 @@ let rec lex (source : string) : token list =
                  | char :: _ -> Char.is_whitespace char
                  | _ -> false ->
               (Some Sub, rest)
-          | n
-            when equal_char '-' n
-                 || Option.is_some (Int.of_string_opt (String.of_char n)) ->
-              parse_int n rest
+          | n when equal_char '-' n || Char.is_digit n -> parse_int n rest
+          | c when Char.is_whitespace c -> (None, rest)
           | c -> parse_word (c :: rest)
         in
 
@@ -59,68 +59,25 @@ and parse_int n rest =
   (Some (Number (Int.of_string number_str)), List.drop_while ~f:is_number rest)
 
 and parse_word source =
-  let str = List.take_while ~f:Char.is_alpha source |> String.of_char_list in
-  let consumed = List.drop_while ~f:Char.is_alpha source in
+  let str = List.take_while ~f:Char.is_alphanum source |> String.of_char_list in
+  let consumed = List.drop_while ~f:Char.is_alphanum source in
   match str with
+  | "swap" -> (Some Swap, consumed)
+  | "dup2" -> (Some Dup2, consumed)
+  | "dup" -> (Some Dup, consumed)
   | "putn" -> (Some PrintNumber, consumed)
   | "putc" -> (Some PrintChar, consumed)
-  | _ -> assert false
+  | "while" -> (Some While, consumed)
+  | "done" -> (Some Done, consumed)
+  | "if" -> (Some If, consumed)
+  | "fi" -> (Some Fi, consumed)
+  | "else" -> (Some Else, consumed)
+  | _ ->
+      print_endline str;
+      assert false
 
 let tokens_of_file (input_file_pahth : string) : token list =
   lex (Core.In_channel.read_all input_file_pahth)
-
-let asm_of_token (token : token) : string =
-  let instructions =
-    match token with
-    | Add ->
-        [ "    pop rax"; "    pop rbx"; "    add rax, rbx"; "    push rax" ]
-    | Sub ->
-        [ "    pop rax"; "    pop rbx"; "    sub rax, rbx"; "    push rax" ]
-    | IntDiv -> [ "    pop rax"; "    pop rbx"; "    idiv rbx"; "    push rax" ]
-    | Number n -> [ Printf.sprintf "    mov rax, %d" n; "    push rax" ]
-    | PrintNumber ->
-        [ "    pop rax"; "    lea rbx, .putn_format[rip]"; "    call put" ]
-    | PrintChar ->
-        [ "    pop rax"; "    lea rbx, .putc_format[rip]"; "    call put" ]
-    | _ -> assert false
-  in
-  List.map ~f:(fun s -> s ^ "\n") instructions |> String.concat
-
-let output_asm_to_channel tokens ch =
-  let open Stdio.Out_channel in
-  (* inicialização *)
-  List.iter ~f:(output_string ch)
-    [
-      ".intel_syntax noprefix\n";
-      ".section .rodata\n";
-      "    .putn_format: .asciz \"%d\\n\"\n";
-      "    .putc_format: .asciz \"%c\\n\"\n";
-      ".section .text\n";
-      "put:\n";
-      "    push rbp\n";
-      "    mov rbp, rsp\n";
-      "    sub rsp, 16\n";
-      "    mov rsi, rax\n";
-      "    mov rax, rbx\n";
-      "    mov rdi, rax\n";
-      "    call printf@PLT\n";
-      "    xor rax, rax\n";
-      "    nop\n";
-      "    leave\n";
-      "    ret\n";
-      ".global main\n";
-      "main:\n";
-      "    push rbp\n";
-      "    mov rbp, rsp\n";
-    ];
-
-  List.iter ~f:(fun (t : token) -> asm_of_token t |> output_string ch) tokens;
-
-  (* finalização *)
-  output_string ch "    pop rbp\n";
-  output_string ch "    ret\n";
-
-  close ch
 
 let ( |. ) : int -> int -> int = Int.bit_or
 let ( & ) : int -> int -> int = Int.bit_and
@@ -141,6 +98,39 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_int64_le buf (Int64.of_int n);
         (* push eax *)
         Buffer.add_uint8 buf (0x50 + 0)
+    | Swap ->
+        (* pop rax *)
+        Buffer.add_uint8 buf 0x58;
+        (* pop rbx *)
+        Buffer.add_uint8 buf 0x5b;
+        (* push rax *)
+        Buffer.add_uint8 buf 0x50;
+        (* push rbx *)
+        Buffer.add_uint8 buf 0x53
+    | Dup ->
+        (* pop rax *)
+        Buffer.add_uint8 buf 0x58;
+        (* push rax *)
+        Buffer.add_uint8 buf 0x50;
+        (* push rax *)
+        Buffer.add_uint8 buf 0x50
+    | Dup2 ->
+        (* pop rax *)
+        Buffer.add_uint8 buf 0x58;
+        (* pop rbx *)
+        Buffer.add_uint8 buf 0x5b;
+        (* push rbx *)
+        Buffer.add_uint8 buf 0x53;
+        (* push rax *)
+        Buffer.add_uint8 buf 0x50;
+        (* push rbx *)
+        Buffer.add_uint8 buf 0x53;
+        (* push rax *)
+        Buffer.add_uint8 buf 0x50
+    | Sub -> assert false
+    | Mul -> assert false
+    | IntDiv -> assert false
+    | Eq -> assert false
     | Add ->
         (* pop eax *)
         Buffer.add_uint8 buf 0x58;
@@ -213,12 +203,9 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_uint8 buf 0x58
     | PrintNumber ->
         (* mov    r8, 0 *)
-        Buffer.add_string buf "\x49\xc7\xc0\x01\x00\x00\x00";
+        Buffer.add_string buf "\x49\xc7\xc0\x00\x00\x00\x00";
         (* pop    rcx *)
         Buffer.add_string buf "\x59";
-
-        Buffer.add_string buf "\x6a";
-        Buffer.add_string buf "\n";
         (* loop: *)
         Buffer.add_string buf "\x49\xff\xc0";
         Buffer.add_string buf "\x48\xc7\xc2\x00\x00\x00\x00";
@@ -240,7 +227,6 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_string buf "\x58";
         Buffer.add_string buf "\x49\xff\xc8";
         Buffer.add_string buf "\x75\xe0"
-    | _ -> assert false
   in
   Buffer.to_bytes buf
 
@@ -409,15 +395,13 @@ let output_elf_to_channel tokens ch =
   output_bytes ch program
 
 let () =
-  let usage = "orth -o <output> -i <input> [-asm]" in
+  let usage = "orth -o <output> -i <input>" in
   let input_file = ref "" in
   let output_file = ref "" in
-  let asm = ref false in
   let speclist =
     [
       ("-o", Arg.Set_string output_file, "Destinação do executável");
       ("-i", Arg.Set_string input_file, "Destinação do executável");
-      ("-asm", Arg.Set asm, "Destinação do executável");
     ]
   in
   let anon_fun _ = () in
@@ -427,15 +411,9 @@ let () =
   else
     let tokens = tokens_of_file !input_file in
     let ch = Out_channel.create !output_file in
-    let output_fn =
-      if !asm then
-        let () = print_endline "asm" in
-        output_asm_to_channel
-      else
-        let () = print_endline "elf" in
-        output_elf_to_channel
-    in
-    output_fn tokens ch
+    let _ = Core_unix.open_process (sprintf "chmod +x %s" !output_file) in
+    output_elf_to_channel tokens ch
+
 (*
    let nome, ch = Stdlib.Filename.open_temp_file "sla.s" "sla.s" in
    let () = output_asm_to_channel tokens ch in
