@@ -52,14 +52,18 @@ let rec lex (source : string) : token list =
   loop chars
 
 and parse_char rest =
-  let consumed, rest = List.split_while ~f:(fun c -> not (equal_char c '\'')) rest in
-  let chr = if List.length consumed > 1 then 
-    match consumed with
-    | [ '\\'; 'n' ] -> '\n'
-    | [ '\\'; '\'' ] -> '\''
-    | [ '\\'; '\\' ] -> '\\'
-    | _ -> '?'
-  else List.hd_exn consumed in
+  let consumed, rest =
+    List.split_while ~f:(fun c -> not (equal_char c '\'')) rest
+  in
+  let chr =
+    if List.length consumed > 1 then
+      match consumed with
+      | [ '\\'; 'n' ] -> '\n'
+      | [ '\\'; '\'' ] -> '\''
+      | [ '\\'; '\\' ] -> '\\'
+      | _ -> '?'
+    else List.hd_exn consumed
+  in
   (Some (Number (Char.to_int chr)), List.tl_exn rest)
 
 and parse_int n rest =
@@ -139,10 +143,27 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_uint8 buf 0x53;
         (* push rax *)
         Buffer.add_uint8 buf 0x50
-    | Sub -> assert false
-    | Mul -> assert false
-    | IntDiv -> assert false
-    | Eq -> assert false
+    | Sub ->
+        (* pop eax *)
+        Buffer.add_uint8 buf 0x58;
+        (* pop ebx *)
+        Buffer.add_uint8 buf (0x58 + 3);
+
+        (* sub eax, ebx *)
+        Buffer.add_uint8 buf 0x48;
+        Buffer.add_uint8 buf 0x2b;
+        Buffer.add_uint8 buf (0b11 << 6 |. (0b000 << 3) |. 0b011);
+        (* push eax *)
+        Buffer.add_uint8 buf (0x50 + 0)
+    | Mul ->
+        print_endline "TODO: Mul";
+        assert false
+    | IntDiv ->
+        print_endline "TODO: IntDiv";
+        assert false
+    | Eq ->
+        print_endline "TODO: Eq";
+        assert false
     | Add ->
         (* pop eax *)
         Buffer.add_uint8 buf 0x58;
@@ -288,11 +309,7 @@ let output_elf_to_channel tokens ch =
     in
 
     List.iter ~f:(add_bytes_of_token buf) tokens;
-    (*
-    movq $0x3C, %rax
-    movq $0x00, %rbx
-    syscall
- *)
+
     (* saindo *)
     Buffer.add_bytes !buf
       (to_bytes_as_is
