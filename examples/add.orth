@@ -1,8 +1,8 @@
-34 35 + putn
-' ' putc
-'n' putc
-'i' putc
-'c' putc
-'e' putc
-'\n' putc
-0
+34   # stack: 34
+35   # stack: 34 35
++    # stack: 69
+putn # stack: vazio
+'\n' # stack: '\n'
+putc # stack: vazio
+0    # stack: 0
+

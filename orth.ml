@@ -119,7 +119,7 @@ let bytes_of_token (token : token) : bytes =
         (* pop rax *)
         Buffer.add_uint8 buf 0x58;
         (* pop rbx *)
-        Buffer.add_uint8 buf 0x5b;
+        Buffer.add_uint8 buf (0x58 + 3);
         (* push rax *)
         Buffer.add_uint8 buf 0x50;
         (* push rbx *)
@@ -184,8 +184,8 @@ let bytes_of_token (token : token) : bytes =
         Buffer.add_uint8 buf (0x58 + 3);
 
         (* add eax, ebx *)
-        Buffer.add_uint8 buf 0x48;
-        Buffer.add_uint8 buf 0x03;
+        Buffer.add_uint8 buf 0x48; (* mexendo com registradores 64bit *)
+        Buffer.add_uint8 buf 0x03; (* um dos opcodes de ADD *)
         Buffer.add_uint8 buf (0b11 << 6 |. (0b000 << 3) |. 0b011);
         (* push eax *)
         Buffer.add_uint8 buf (0x50 + 0)
