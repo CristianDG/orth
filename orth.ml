@@ -32,6 +32,7 @@ let rec lex (source : string) : token list =
           | '+' -> (Some Add, rest)
           | '/' -> (Some IntDiv, rest)
           | '*' -> (Some Mul, rest)
+          | '=' -> (Some Eq, rest)
           | '-'
             when match rest with
                  | char :: _ -> Char.is_whitespace char
@@ -156,14 +157,26 @@ let bytes_of_token (token : token) : bytes =
         (* push eax *)
         Buffer.add_uint8 buf (0x50 + 0)
     | Mul ->
+
         print_endline "TODO: Mul";
         assert false
     | IntDiv ->
         print_endline "TODO: IntDiv";
         assert false
     | Eq ->
-        print_endline "TODO: Eq";
-        assert false
+        (* pop eax *)
+        Buffer.add_uint8 buf 0x58;
+        (* pop ebx *)
+        Buffer.add_uint8 buf (0x58 + 3);
+
+        (* xor rax, rbx *)
+        Buffer.add_string buf "\x48\x31\xd8";
+        Buffer.add_string buf "\x75\x09";
+        Buffer.add_string buf "\x48\xc7\xc0\x01\000\000\000";
+        Buffer.add_string buf "\xeb\x07";
+        Buffer.add_string buf "\x48\xc7\xc0\x00\000\000\000";
+        (* push eax *)
+        Buffer.add_uint8 buf (0x50 + 0)
     | Add ->
         (* pop eax *)
         Buffer.add_uint8 buf 0x58;
@@ -318,10 +331,10 @@ let output_elf_to_channel tokens ch =
          @ [ 0x0f; 0x05 ]));
     buf.contents
   in
-  let entry_offset = 0x78 in
-  let entry_addr = 0x08048000 + entry_offset in
   let program = Buffer.to_bytes program_buf in
   let program_size = Buffer.length program_buf in
+  let entry_offset = 0x78 in
+  let entry_addr = 0x08048000 + entry_offset in
   (* elf64_ehdr *)
   let e_ident =
     to_bytes_as_is
